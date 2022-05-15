@@ -1,0 +1,185 @@
+{
+  "id": "cribl_inline_redux_report",
+  "conf": {
+    "output": "default",
+    "groups": {},
+    "asyncFuncTimeout": 1000,
+    "functions": [
+      {
+        "filter": "true",
+        "conf": {
+          "comment": "- Use the (5)Chain function to point to your Pack or Pipeline that does the work\n- Fire up a capture at stage 4 to capture resulting stats (filter for raw_bytes && total_bytes)\n- You can output to analysis tier with a little clean up. This might be helpful in a multiprocess/distributed system to total up the stats.\n- Enable/disable passthrough mode on (7)Aggregations, and adjust (8)Sampling to see a sample of the resulting events"
+        },
+        "id": "comment"
+      },
+      {
+        "filter": "true",
+        "conf": {
+          "add": [
+            {
+              "name": "sourcetype",
+              "value": "sourcetype || \"testing\""
+            },
+            {
+              "name": "source",
+              "value": "source || \"testing\""
+            },
+            {
+              "name": "index",
+              "value": "index || \"testing\""
+            },
+            {
+              "name": "host",
+              "value": "host || \"testing\""
+            },
+            {
+              "name": "__total_bytes",
+              "value": "JSON.stringify(__e).length"
+            },
+            {
+              "name": "__raw_bytes",
+              "value": "_raw.length"
+            },
+            {
+              "name": "_time",
+              "value": "Date.now()/1000"
+            }
+          ]
+        },
+        "id": "eval"
+      },
+      {
+        "filter": "true",
+        "conf": {
+          "passthrough": true,
+          "preserveGroupBys": false,
+          "sufficientStatsOnly": false,
+          "metricsMode": false,
+          "timeWindow": "60s",
+          "aggregations": [
+            "sum(__total_bytes).as('total_bytes')",
+            "count().as('events')",
+            "sum(__raw_bytes).as('raw_bytes')"
+          ],
+          "cumulative": false,
+          "flushOnInputClose": true,
+          "add": [
+            {
+              "name": "type",
+              "value": "'orig'"
+            },
+            {
+              "name": "__TESTING_POV",
+              "value": "1"
+            }
+          ]
+        },
+        "id": "aggregation"
+      },
+      {
+        "id": "eval",
+        "filter": "__total_bytes",
+        "conf": {
+          "add": [
+            {
+              "name": "__start",
+              "value": "+Date.now()"
+            }
+          ]
+        },
+        "description": "Start a timer so we know how long the processing takes"
+      },
+      {
+        "id": "chain",
+        "filter": "__total_bytes",
+        "conf": {
+          "processor": "pack:Infoblox"
+        },
+        "description": "REQUIRED: CHANGE THIS TO FIT YOUR TEST CASE"
+      },
+      {
+        "id": "eval",
+        "filter": "__total_bytes",
+        "conf": {
+          "add": [
+            {
+              "name": "__total_bytes",
+              "value": "JSON.stringify(__e).length"
+            },
+            {
+              "name": "__raw_bytes",
+              "value": "typeof(_raw) == 'string' ? _raw.length : JSON.stringify(_raw).length"
+            },
+            {
+              "name": "__end",
+              "value": "+Date.now()"
+            }
+          ]
+        },
+        "description": "Pre the stats for processed data, and stop the timer"
+      },
+      {
+        "id": "aggregation",
+        "filter": "__total_bytes",
+        "conf": {
+          "passthrough": false,
+          "preserveGroupBys": false,
+          "sufficientStatsOnly": false,
+          "metricsMode": false,
+          "timeWindow": "60s",
+          "aggregations": [
+            "sum(__total_bytes).as('total_bytes')",
+            "count().as('events')",
+            "sum(__raw_bytes).as('raw_bytes')",
+            "min(__start).as('mystarttime')",
+            "max(__end).as('myendtime')"
+          ],
+          "cumulative": false,
+          "flushOnInputClose": true,
+          "add": [
+            {
+              "name": "type",
+              "value": "'processed'"
+            },
+            {
+              "name": "elapsed_ms",
+              "value": "myendtime - mystarttime"
+            },
+            {
+              "name": "__TESTING_POV",
+              "value": "1"
+            }
+          ]
+        },
+        "description": "Stats for the processed data"
+      },
+      {
+        "id": "sampling",
+        "filter": "__total_bytes",
+        "disabled": false,
+        "conf": {
+          "rules": [
+            {
+              "filter": "true",
+              "rate": 1000
+            }
+          ]
+        },
+        "description": "This will only come into play if the previous Aggregation function is set to Passthrough in Output settings"
+      },
+      {
+        "id": "eval",
+        "filter": "true",
+        "conf": {
+          "remove": [
+            "cribl*",
+            "endtime",
+            "my*time",
+            "starttime"
+          ]
+        },
+        "description": "Clean up"
+      }
+    ]
+  }
+}
